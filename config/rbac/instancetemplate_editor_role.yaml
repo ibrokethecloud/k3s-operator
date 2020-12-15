@@ -1,0 +1,24 @@
+# permissions for end users to edit instancetemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: instancetemplate-editor-role
+rules:
+- apiGroups:
+  - k3s.my.domain
+  resources:
+  - instancetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k3s.my.domain
+  resources:
+  - instancetemplates/status
+  verbs:
+  - get

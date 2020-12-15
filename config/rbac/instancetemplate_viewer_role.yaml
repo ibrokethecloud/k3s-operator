@@ -1,0 +1,20 @@
+# permissions for end users to view instancetemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: instancetemplate-viewer-role
+rules:
+- apiGroups:
+  - k3s.my.domain
+  resources:
+  - instancetemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - k3s.my.domain
+  resources:
+  - instancetemplates/status
+  verbs:
+  - get
