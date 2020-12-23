@@ -32,14 +32,22 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme           = runtime.NewScheme()
+	setupLog         = ctrl.Log.WithName("setup")
+	DefaultNamespace = "k3s-operator"
+	DefaultConfig    = "k3s-config"
 )
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
 	_ = k3sv1alpha1.AddToScheme(scheme)
+	if tmpNS, ok := os.LookupEnv("NAMESPACE"); ok {
+		DefaultNamespace = tmpNS
+	}
+	if tmpConfig, ok := os.LookupEnv("CONFIGMAP"); ok {
+		DefaultConfig = tmpConfig
+	}
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -75,9 +83,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&controllers.ClusterReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Cluster"),
-		Scheme: mgr.GetScheme(),
+		Client:           mgr.GetClient(),
+		Log:              ctrl.Log.WithName("controllers").WithName("Cluster"),
+		Scheme:           mgr.GetScheme(),
+		DefaultNamespace: DefaultNamespace,
+		DefaultConfig:    DefaultConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)

@@ -26,12 +26,14 @@ import (
 
 // InstanceTemplateSpec defines the desired state of InstanceTemplate
 type InstanceTemplateSpec struct {
-	Role         string       `json:"role"`
-	Count        int          `json:"count"`
-	InstanceSpec InstanceSpec `json:"instanceSpec"`
-	User         string       `json:"user"`
-	SshKey       []string     `json:"sshKey,omitEmpty"`
-	Name         string       `json:"name"`
+	Role          string            `json:"role"`
+	Count         int               `json:"count"`
+	InstanceSpec  InstanceSpec      `json:"instanceSpec"`
+	User          string            `json:"user"`
+	SshPrivateKey string            `json:"sshPrivateKey,omitempty"`
+	Name          string            `json:"name"`
+	Taints        map[string]string `json:"taints,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
 }
 
 // InstanceSpec is the place holder for the various cloud specific Instance Specs
@@ -41,9 +43,14 @@ type InstanceSpec struct {
 
 // InstanceTemplateStatus defines the observed state of InstanceTemplate
 type InstanceTemplateStatus struct {
-	InstanceStatus map[string]string `json:"instanceStatus"`
-	K8sStatus      map[string]string `json:"k8sStatus"`
 	Provisioned    bool              `json:"provisioned"`
+	InstanceStatus map[string]string `json:"instanceStatus"` // contains name and address of instance
+}
+
+// InstanceDetails contains details of instances provisioned by this template
+type InstanceDetails struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
 }
 
 // +kubebuilder:object:root=true

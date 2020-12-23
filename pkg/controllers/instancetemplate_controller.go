@@ -34,8 +34,8 @@ type InstanceTemplateReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=k3s.my.domain,resources=instancetemplates,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=k3s.my.domain,resources=instancetemplates/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=k3s.io,resources=instancetemplates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=k3s.io,resources=instancetemplates/status,verbs=get;update;patch
 
 func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()

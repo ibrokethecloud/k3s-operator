@@ -2,8 +2,8 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/k3s.my.domain_instancetemplates.yaml
-- bases/k3s.my.domain_clusters.yaml
+- bases/k3s.io_clusters.yaml
+- bases/k3s.io_instancetemplates.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

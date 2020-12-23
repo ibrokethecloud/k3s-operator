@@ -1,4 +1,4 @@
-domain: my.domain
+domain: io
 repo: github.com/ibrokethecloud/k3s-operator
 resources:
 - group: k3s

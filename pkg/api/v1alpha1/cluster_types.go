@@ -25,17 +25,17 @@ import (
 
 // ClusterSpec defines the desired state of Cluster
 type ClusterSpec struct {
-	Channel       string                 `json:"channel"`
-	Version       string                 `json:"version"`
-	Config        string                 `json:"config"`
+	Channel       string                 `json:"channel,omitempty"`
+	Version       string                 `json:"version,omitempty"`
+	Config        string                 `json:"config,omitempty"`
 	InstancePools []InstanceTemplateSpec `json:"nodePools"`
 }
 
 // ClusterStatus defines the observed state of Cluster
 type ClusterStatus struct {
-	Status             string            `json:"status"`
-	KubeConfig         string            `json:"kubeConfig"`
-	InstancePoolStatus map[string]string `json:"nodePoolStatus"`
+	Status     string            `json:"status"`
+	KubeConfig string            `json:"kubeConfig"`
+	NodeStatus map[string]string `json:"nodeStatus"`
 }
 
 // +kubebuilder:object:root=true
