@@ -94,19 +94,19 @@ func (r *RemoteConnection) CheckConnection() (client *gossh.Client, status bool)
 }
 
 //Remote is used to execute a remote command on an instance
-func (r *RemoteConnection) Remote(command string) (err error) {
+func (r *RemoteConnection) Remote(command string) (output []byte, err error) {
 	client, ok := r.CheckConnection()
 	if !ok {
-		return fmt.Errorf("Error during connection check")
+		return output, fmt.Errorf("Error during connection check")
 	}
 	session, err := client.NewSession()
 	if err != nil {
-		return err
+		return output, err
 	}
 	defer session.Close()
 
-	err = session.Run(command)
-	return err
+	output, err = session.Output(command)
+	return output, err
 }
 
 //RemoteFile is used to copy the contents to a remote file

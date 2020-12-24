@@ -228,17 +228,13 @@ func (in *InstanceTemplateSpec) DeepCopyInto(out *InstanceTemplateSpec) {
 	in.InstanceSpec.DeepCopyInto(&out.InstanceSpec)
 	if in.Taints != nil {
 		in, out := &in.Taints, &out.Taints
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 }
 

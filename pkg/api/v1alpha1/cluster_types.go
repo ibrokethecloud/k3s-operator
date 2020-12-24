@@ -36,6 +36,7 @@ type ClusterStatus struct {
 	Status     string            `json:"status"`
 	KubeConfig string            `json:"kubeConfig"`
 	NodeStatus map[string]string `json:"nodeStatus"`
+	Message    string            `json:"message"`
 }
 
 // +kubebuilder:object:root=true

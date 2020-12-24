@@ -38,8 +38,8 @@ type InstanceTemplateReconciler struct {
 // +kubebuilder:rbac:groups=k3s.io,resources=instancetemplates/status,verbs=get;update;patch
 
 func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	_ = context.Background()
-	_ = r.Log.WithValues("instancetemplate", req.NamespacedName)
+	ctx := context.Background()
+	log := r.Log.WithValues("instancetemplate", req.NamespacedName)
 
 	// your logic here
 

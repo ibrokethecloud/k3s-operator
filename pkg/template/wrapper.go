@@ -7,14 +7,15 @@ import (
 
 // Command generation for the helper script
 type Command struct {
-	BootStep   string
+	BootURL    string
 	ExtraSteps string
 	NodeName   string
+	Role       string
 }
 
 const HelperScript = `
 #!/bin/sh
-{{ if eq .Command.BootStep "" }}curl -sfL https://get.k3s.io | sh - {{else}}{{ .Command.BootStep }}{{ end }}
+{{ if eq .Command.BootURL "" }}curl -sfL https://get.k3s.io {{else}}{{ .Command.BootStep }} | sh -s - {{.Command.Role}} {{ end }}
 ## Extra arguments can be set here
 {{ .Command.ExtraSteps }}
 NODE='{{- .Command.NodeName }}'
@@ -29,11 +30,12 @@ done
 `
 
 // Helper function to generate the script based on contents of config Map
-func GenerateCommand(bootStep string, extraStep string, nodeName string) (output bytes.Buffer, err error) {
+func GenerateCommand(bootURL string, extraStep string, nodeName string, role string) (output bytes.Buffer, err error) {
 	c := Command{
-		BootStep:   bootStep,
+		BootURL:    bootURL,
 		ExtraSteps: extraStep,
 		NodeName:   nodeName,
+		Role:       role,
 	}
 
 	wrapperTemplate := template.Must(template.New("HelperScript").Parse(HelperScript))
