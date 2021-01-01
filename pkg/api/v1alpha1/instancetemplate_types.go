@@ -38,7 +38,13 @@ type InstanceTemplateSpec struct {
 
 // InstanceSpec is the place holder for the various cloud specific Instance Specs
 type InstanceSpec struct {
-	AWSSpec *ec2Instance.Instance `json:"aws"`
+	AWSSpec    *ec2Instance.InstanceSpec `json:"aws,omitempty"`
+	CustomSpec *CustomInstance           `json:"custom,omityempty"`
+}
+
+type CustomInstance struct {
+	Address  string `json:"address"`
+	NodeName string `json:"nodeName,omitEmpty"`
 }
 
 // InstanceTemplateStatus defines the observed state of InstanceTemplate

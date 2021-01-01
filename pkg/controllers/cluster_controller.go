@@ -83,16 +83,16 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	// lets process the cluster object now //
 	if cluster.ObjectMeta.DeletionTimestamp.IsZero() {
 		var err error
-		currentStatus := cluster.Status.DeepCopy()
+		clusterStatus := *cluster.Status.DeepCopy()
 		//var clusterStatus k3sv1alpha1.ClusterStatus
 		//clusterStatus.NodeStatus = make(map[string]string)
-		clusterStatus := *currentStatus
+		//clusterStatus := *currentStatus
 		annotations := make(map[string]string)
 		if len(cluster.GetAnnotations()) != 0 {
 			annotations = cluster.GetAnnotations()
 		}
 
-		switch status := currentStatus.Status; status {
+		switch status := clusterStatus.Status; status {
 		case "":
 			// first pass so lets gen the ssh key //
 			log.Info("Creating ssh key")
