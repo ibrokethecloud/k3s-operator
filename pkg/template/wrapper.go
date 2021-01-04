@@ -15,10 +15,10 @@ type Command struct {
 
 const HelperScript = `
 #!/bin/sh
-{{ if eq .Command.BootURL "" }}curl -sfL https://get.k3s.io {{else}}{{ .Command.BootStep }} | sh -s - {{.Command.Role}} {{ end }}
+{{ if eq .BootURL "" }}curl -sfL https://get.k3s.io {{else}}{{ .BootURL }}{{ end }} | sh -s - {{.Role}} 
 ## Extra arguments can be set here
-{{ .Command.ExtraSteps }}
-NODE='{{- .Command.NodeName }}'
+{{ .ExtraSteps }}
+NODE='{{- .NodeName }}'
 ## Standard check ##
 sleep 60
 CURRENT_NODE_STATUS=$(kubectl get nodes | grep ${NODE} | awk '{print tolower($2)}')

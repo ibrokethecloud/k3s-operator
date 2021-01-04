@@ -36,103 +36,83 @@ spec:
           properties:
             count:
               type: integer
+            group:
+              type: string
             instanceSpec:
               description: InstanceSpec is the place holder for the various cloud
                 specific Instance Specs
               properties:
                 aws:
-                  description: Instance is the Schema for the instances API
+                  description: InstanceSpec defines the desired state of Instance
                   properties:
-                    apiVersion:
-                      description: 'APIVersion defines the versioned schema of this
-                        representation of an object. Servers should convert recognized
-                        schemas to the latest internal value, and may reject unrecognized
-                        values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+                    blockDeviceMapping:
                       type: string
-                    kind:
-                      description: 'Kind is a string value representing the REST resource
-                        this object represents. Servers may infer this from the endpoint
-                        the client submits requests to. Cannot be updated. In CamelCase.
-                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                    credentialSecret:
                       type: string
-                    metadata:
-                      type: object
-                    spec:
-                      description: InstanceSpec defines the desired state of Instance
-                      properties:
-                        blockDeviceMapping:
-                          type: string
-                        credentialSecret:
-                          type: string
-                        iamInstanceProfile:
-                          type: string
-                        imageID:
-                          type: string
-                        instanceType:
-                          type: string
-                        keyname:
-                          type: string
-                        publicIPAddress:
-                          type: boolean
-                        region:
-                          type: string
-                        securityGroupIDS:
-                          items:
+                    iamInstanceProfile:
+                      type: string
+                    imageID:
+                      type: string
+                    instanceType:
+                      type: string
+                    keyname:
+                      type: string
+                    publicIPAddress:
+                      type: boolean
+                    region:
+                      type: string
+                    securityGroupIDS:
+                      items:
+                        type: string
+                      type: array
+                    securityGroups:
+                      items:
+                        type: string
+                      type: array
+                    subnetID:
+                      type: string
+                    tagSpecification:
+                      items:
+                        properties:
+                          name:
                             type: string
-                          type: array
-                        securityGroups:
-                          items:
+                          value:
                             type: string
-                          type: array
-                        subnetID:
-                          type: string
-                        tagSpecification:
-                          items:
-                            properties:
-                              name:
-                                type: string
-                              value:
-                                type: string
-                            required:
-                            - name
-                            - value
-                            type: object
-                          type: array
-                        userData:
-                          type: string
-                      required:
-                      - credentialSecret
-                      - imageID
-                      - instanceType
-                      - publicIPAddress
-                      - region
-                      type: object
-                    status:
-                      description: InstanceStatus defines the observed state of Instance
-                      properties:
-                        instanceID:
-                          type: string
-                        privateIP:
-                          type: string
-                        publicIP:
-                          type: string
-                        status:
-                          type: string
-                      required:
-                      - instanceID
-                      - privateIP
-                      - publicIP
-                      - status
-                      type: object
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                    userData:
+                      type: string
+                  required:
+                  - credentialSecret
+                  - imageID
+                  - instanceType
+                  - publicIPAddress
+                  - region
                   type: object
-              required:
-              - aws
+                custom:
+                  properties:
+                    address:
+                      type: string
+                    nodeName:
+                      type: string
+                  required:
+                  - address
+                  type: object
               type: object
+            labels:
+              items:
+                type: string
+              type: array
             name:
               type: string
             role:
               type: string
-            sshKey:
+            sshPrivateKey:
+              type: string
+            taints:
               items:
                 type: string
               type: array
@@ -140,6 +120,7 @@ spec:
               type: string
           required:
           - count
+          - group
           - instanceSpec
           - name
           - role
@@ -148,10 +129,21 @@ spec:
         status:
           description: InstanceTemplateStatus defines the observed state of InstanceTemplate
           properties:
+            instanceStatus:
+              additionalProperties:
+                type: string
+              type: object
+            message:
+              type: string
             provisioned:
               type: boolean
+            status:
+              type: string
           required:
+          - instanceStatus
+          - message
           - provisioned
+          - status
           type: object
       type: object
   version: v1alpha1

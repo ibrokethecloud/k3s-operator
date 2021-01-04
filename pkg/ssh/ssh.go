@@ -84,20 +84,20 @@ func NewRemoteConnection(address string, user string, privateKey string) (remote
 }
 
 // CheckConnection is used to ensure that controller can ssh to remote instance
-func (r *RemoteConnection) CheckConnection() (client *gossh.Client, status bool) {
-	client, err := gossh.Dial("tcp", r.Address, &r.Config)
-	if err == nil {
+func (r *RemoteConnection) CheckConnection() (client *gossh.Client, err error) {
+	client, err = gossh.Dial("tcp", r.Address, &r.Config)
+	/*if err == nil {
 		status = true
-	}
+	}*/
 
-	return client, status
+	return client, err
 }
 
 //Remote is used to execute a remote command on an instance
 func (r *RemoteConnection) Remote(command string) (output []byte, err error) {
-	client, ok := r.CheckConnection()
-	if !ok {
-		return output, fmt.Errorf("Error during connection check")
+	client, err := r.CheckConnection()
+	if err != nil {
+		return output, err
 	}
 	session, err := client.NewSession()
 	if err != nil {
@@ -124,9 +124,9 @@ func (r *RemoteConnection) RemoteFile(filePath string, content string) (err erro
 	}
 	defer os.Remove(tmpFile.Name())
 
-	client, ok := r.CheckConnection()
-	if !ok {
-		return fmt.Errorf("Error during filecopy connection check")
+	client, err := r.CheckConnection()
+	if err != nil {
+		return err
 	}
 
 	session, err := client.NewSession()

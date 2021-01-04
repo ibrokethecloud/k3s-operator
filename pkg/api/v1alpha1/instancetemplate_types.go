@@ -30,6 +30,7 @@ type InstanceTemplateSpec struct {
 	Count         int          `json:"count"`
 	InstanceSpec  InstanceSpec `json:"instanceSpec"`
 	User          string       `json:"user"`
+	Group         string       `json:"group"`
 	SshPrivateKey string       `json:"sshPrivateKey,omitempty"`
 	Name          string       `json:"name"`
 	Taints        []string     `json:"taints,omitempty"`
@@ -39,12 +40,12 @@ type InstanceTemplateSpec struct {
 // InstanceSpec is the place holder for the various cloud specific Instance Specs
 type InstanceSpec struct {
 	AWSSpec    *ec2Instance.InstanceSpec `json:"aws,omitempty"`
-	CustomSpec *CustomInstance           `json:"custom,omityempty"`
+	CustomSpec *CustomInstance           `json:"custom,omitempty"`
 }
 
 type CustomInstance struct {
 	Address  string `json:"address"`
-	NodeName string `json:"nodeName,omitEmpty"`
+	NodeName string `json:"nodeName,omitempty"`
 }
 
 // InstanceTemplateStatus defines the observed state of InstanceTemplate

@@ -20,6 +20,8 @@ import (
 	"flag"
 	"os"
 
+	ec2Instance "github.com/ibrokethecloud/ec2-operator/pkg/api/v1alpha1"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -42,6 +44,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
 	_ = k3sv1alpha1.AddToScheme(scheme)
+	_ = ec2Instance.AddToScheme(scheme)
 	if tmpNS, ok := os.LookupEnv("NAMESPACE"); ok {
 		DefaultNamespace = tmpNS
 	}

@@ -18,9 +18,9 @@ package controllers
 
 import (
 	"context"
-	b64 "encoding/base64"
-	"encoding/json"
 	"fmt"
+
+	"github.com/ibrokethecloud/k3s-operator/pkg/cloudinit"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -64,22 +64,30 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 	if template.ObjectMeta.DeletionTimestamp.IsZero() {
 		var err error
 		var templateSpecType string
-		templateStatus := *template.Status.DeepCopy()
-		status := k3sv1alpha1.InstanceTemplateStatus{}
+		status := *template.Status.DeepCopy()
+		if len(status.InstanceStatus) == 0 {
+			status.InstanceStatus = make(map[string]string)
+		}
 		annotations := make(map[string]string)
 		if len(template.GetAnnotations()) != 0 {
 			annotations = template.GetAnnotations()
 		}
 
-		switch currentStatus := templateStatus.Status; currentStatus {
+		switch currentStatus := status.Status; currentStatus {
 		case "":
 			status, templateSpecType, err = r.submitInstances(ctx, template)
 			if err != nil {
+				log.Error(err, "error during instance creation")
 				status.Message = err.Error()
 			}
 			annotations["instanceType"] = templateSpecType
 		case "Submitted":
 			// Poll provisioning requests
+			status, err = r.fetchInstanceTemplateStatus(ctx, template)
+			if err != nil {
+				log.Error(err, "error fetching instance status")
+				status.Message = err.Error()
+			}
 		case "Ready":
 			// Nodes are provisioned. Mark state of instanceTemplate as Ready //
 			log.Info("Instance Template Ready")
@@ -87,7 +95,7 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 		}
 		template.Status = status
 		template.SetAnnotations(annotations)
-		return ctrl.Result{Requeue: true}, r.Update(ctx, &instance)
+		return ctrl.Result{Requeue: true}, r.Update(ctx, &template)
 	}
 	return ctrl.Result{}, nil
 }
@@ -118,6 +126,7 @@ func (r *InstanceTemplateReconciler) submitInstances(ctx context.Context,
 		// CustomSpec so no actual provisioning is needed. Just update status and pass along //
 		status.Message = "custom nodes so no provisioning performed. assume nodes are ready"
 		status.Status = "Ready"
+		status.Provisioned = true
 		if len(template.Spec.InstanceSpec.CustomSpec.NodeName) > 0 {
 			status.InstanceStatus[template.Spec.InstanceSpec.CustomSpec.NodeName] = template.Spec.InstanceSpec.CustomSpec.Address
 		} else {
@@ -143,23 +152,25 @@ func (r *InstanceTemplateReconciler) submitAWSInstances(ctx context.Context,
 	template k3sv1alpha1.InstanceTemplate) (status k3sv1alpha1.InstanceTemplateStatus,
 	err error) {
 	// merge cloudInit to add new ssh keys //
-	mergedCloudInit, err := mergeCloudInit(template.Spec.InstanceSpec.AWSSpec.UserData,
-		template.Annotations["pubKey"])
+	status = template.Status
+	mergedCloudInit, err := cloudinit.AddSSHUserToYaml(template.Spec.InstanceSpec.AWSSpec.UserData,
+		template.Spec.User, template.Spec.Group, template.Annotations["pubKey"])
 	if err != nil {
 		return status, err
 	}
-
+	labels := template.GetLabels()
+	labels["instanceTemplate"] = template.Name
 	for i := 0; i < template.Spec.Count; i++ {
 		// submit an instance creation request //
 		instance := &ec2Instance.Instance{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("%s-%d", template.Name, i),
 				Namespace: template.Namespace,
+				Labels:    labels,
 			},
 			Spec: *template.Spec.InstanceSpec.AWSSpec,
 		}
 		instance.Spec.UserData = mergedCloudInit
-
 		// Create ec2 instance along with update ownership reference //
 		if _, err = controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
 			return controllerutil.SetControllerReference(&template, instance, r.Scheme)
@@ -172,32 +183,6 @@ func (r *InstanceTemplateReconciler) submitAWSInstances(ctx context.Context,
 	// instance requests created //
 	status.Status = "Submitted"
 	return status, nil
-}
-
-func mergeCloudInit(inputCloudInit string, pubKey string) (outputCloudInit string, err error) {
-	cloudInitMap := make(map[string]interface{})
-	decodedCloudInitByte, err := b64.StdEncoding.DecodeString(inputCloudInit)
-	if err != nil {
-		return outputCloudInit, err
-	}
-	err = json.Unmarshal(decodedCloudInitByte, &cloudInitMap)
-	if err != nil {
-		return outputCloudInit, err
-	}
-	var sshKeys []string
-	keys, ok := cloudInitMap["ssh_authorized_keys"]
-	if ok {
-		sshKeys = keys.([]string)
-	}
-	sshKeys = append(sshKeys, pubKey)
-	cloudInitMap["ssh_authorized_keys"] = sshKeys
-	outputCloudInitByte, err := json.Marshal(cloudInitMap)
-	if err != nil {
-		return outputCloudInit, err
-	}
-
-	outputCloudInit = b64.StdEncoding.EncodeToString(outputCloudInitByte)
-	return outputCloudInit, err
 }
 
 // poll instances and check if they are ready //
@@ -221,5 +206,34 @@ func (r *InstanceTemplateReconciler) fetchInstanceTemplateStatus(ctx context.Con
 // fetch AWSInstanceInfo //
 func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 	template k3sv1alpha1.InstanceTemplate) (status k3sv1alpha1.InstanceTemplateStatus, err error) {
+	status = template.Status
+	var ec2List ec2Instance.InstanceList
+	provisionedCount := 0
+	err = r.List(ctx, &ec2List, client.MatchingLabels{"instanceTemplate": template.Name})
+	if err != nil {
+		return status, err
+	}
+	// lets query all instances and update the status map
+	if len(ec2List.Items) > 0 {
+		for _, instance := range ec2List.Items {
+			if instance.Status.Status == "provisioned" {
+				if instance.Spec.PublicIPAddress {
+					status.InstanceStatus[instance.Name] = instance.Status.PublicIP
+				} else {
+					status.InstanceStatus[instance.Name] = instance.Status.PrivateIP
+				}
+				provisionedCount++
+			}
+		}
+	} else {
+		return status, fmt.Errorf("did not find any ec2 instances")
+	}
 
+	if provisionedCount == template.Spec.Count {
+		status.Status = "Ready"
+		status.Provisioned = true
+		status.Message = ""
+	}
+
+	return status, nil
 }

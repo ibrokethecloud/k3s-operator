@@ -40,7 +40,8 @@ type ClusterStatus struct {
 }
 
 // +kubebuilder:object:root=true
-
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.status",description="provisioning status of cluster"
+// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Error Message"
 // Cluster is the Schema for the clusters API
 type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`
