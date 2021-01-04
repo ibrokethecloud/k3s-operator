@@ -6,9 +6,13 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func AddSSHUserToYaml(encodedUserData, user, group, sshkey string) (string, error) {
+func AddSSHUserToYaml(encodedUserData, user, group, encodedSshKey string) (string, error) {
 	cf := make(map[interface{}]interface{})
 	yamlcontent, err := base64.StdEncoding.DecodeString(encodedUserData)
+	if err != nil {
+		return "", err
+	}
+	sshKey, err := base64.StdEncoding.DecodeString(encodedSshKey)
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +33,7 @@ func AddSSHUserToYaml(encodedUserData, user, group, sshkey string) (string, erro
 
 		"no_user_group": true,
 		"ssh_authorized_keys": []string{
-			sshkey,
+			string(sshKey),
 		},
 	}
 
@@ -63,7 +67,7 @@ func AddSSHUserToYaml(encodedUserData, user, group, sshkey string) (string, erro
 	if err != nil {
 		return "", err
 	}
-
-	encodedOutputData := base64.StdEncoding.EncodeToString(yaml)
+	yamlStr := "#cloud-config\n" + string(yaml)
+	encodedOutputData := base64.StdEncoding.EncodeToString([]byte(yamlStr))
 	return encodedOutputData, nil
 }

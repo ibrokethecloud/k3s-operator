@@ -81,6 +81,7 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 				status.Message = err.Error()
 			}
 			annotations["instanceType"] = templateSpecType
+			template.SetAnnotations(annotations)
 		case "Submitted":
 			// Poll provisioning requests
 			status, err = r.fetchInstanceTemplateStatus(ctx, template)
@@ -94,7 +95,6 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 			return ctrl.Result{}, nil
 		}
 		template.Status = status
-		template.SetAnnotations(annotations)
 		return ctrl.Result{Requeue: true}, r.Update(ctx, &template)
 	}
 	return ctrl.Result{}, nil

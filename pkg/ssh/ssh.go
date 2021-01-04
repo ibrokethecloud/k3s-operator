@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	b64 "encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -48,8 +49,10 @@ func NewKeyPair() (keyPair *KeyPair, err error) {
 		return nil, ErrPublicKey
 	}
 
+	encodedPrvKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Headers: nil, Bytes: privDer})
+
 	return &KeyPair{
-		PrivateKey: privDer,
+		PrivateKey: encodedPrvKey,
 		PublicKey:  gossh.MarshalAuthorizedKey(pubSSH),
 	}, nil
 }

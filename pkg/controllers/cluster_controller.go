@@ -117,6 +117,8 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			if err != nil {
 				log.Error(err, "error during instance pool creation")
 				clusterStatus.Message = err.Error()
+			} else {
+				clusterStatus.Message = ""
 			}
 		case "InstancesPoolsCreated":
 			log.Info("Checking Instance Pools status")
@@ -129,6 +131,8 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 
 			if !ready {
 				clusterStatus.Message = "instance pools not yet ready.. requeue"
+			} else {
+				clusterStatus.Message = ""
 			}
 
 		case "InstancesPoolsReady":
@@ -143,6 +147,7 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				annotations["leader"] = leader
 				annotations["leaderPool"] = leaderPool
 				cluster.SetAnnotations(annotations)
+				clusterStatus.Message = ""
 			}
 		case "ProvisionK3s":
 			// provision the cluster
@@ -151,6 +156,8 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			if err != nil {
 				log.Error(err, "error during provisioning k3s cluster")
 				clusterStatus.Message = err.Error()
+			} else {
+				clusterStatus.Message = ""
 			}
 		case "K3sReady":
 			// fetch the kubeconfig for the cluster //
@@ -159,6 +166,8 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			if err != nil {
 				log.Error(err, "error fetching kubeconfig")
 				clusterStatus.Message = err.Error()
+			} else {
+				clusterStatus.Message = ""
 			}
 		case "Running":
 			log.Info("Cluster running")
