@@ -74,7 +74,7 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 		}
 
 		switch currentStatus := status.Status; currentStatus {
-		case "":
+		case "", "Reconcile":
 			status, templateSpecType, err = r.submitInstances(ctx, template)
 			if err != nil {
 				log.Error(err, "error during instance creation")
@@ -91,8 +91,18 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 			}
 		case "Ready":
 			// Nodes are provisioned. Mark state of instanceTemplate as Ready //
-			log.Info("Instance Template Ready")
-			return ctrl.Result{}, nil
+			status, err = r.fetchInstanceTemplateStatus(ctx, template)
+			if err != nil {
+				log.Error(err, "error reconciling instance status")
+				status.Provisioned = false
+				status.Message = err.Error()
+			}
+
+			// if no change to status then just leave //
+			if status.Status == "Ready" {
+				log.Info("Instance Template Ready")
+				return ctrl.Result{}, nil
+			}
 		}
 		template.Status = status
 		return ctrl.Result{Requeue: true}, r.Update(ctx, &template)
@@ -103,6 +113,7 @@ func (r *InstanceTemplateReconciler) Reconcile(req ctrl.Request) (ctrl.Result, e
 func (r *InstanceTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&k3sv1alpha1.InstanceTemplate{}).
+		Owns(&ec2Instance.Instance{}).
 		Complete(r)
 }
 
@@ -153,18 +164,41 @@ func (r *InstanceTemplateReconciler) submitAWSInstances(ctx context.Context,
 	err error) {
 	// merge cloudInit to add new ssh keys //
 	status = template.Status
+	if len(template.Status.InstanceStatus) == 0 {
+		status.InstanceStatus = make(map[string]string)
+	}
 	mergedCloudInit, err := cloudinit.AddSSHUserToYaml(template.Spec.InstanceSpec.AWSSpec.UserData,
 		template.Spec.User, template.Spec.Group, template.Annotations["pubKey"])
 	if err != nil {
 		return status, err
 	}
-	labels := template.GetLabels()
+	labels := make(map[string]string)
+	if len(template.GetLabels()) != 0 {
+		labels = template.GetLabels()
+	}
+
+	// in case controller crashes during submission want to check edge case
+	// where an instances may have already been submitted. Lets pop them
+	// in the status map to make reconcile easier //
+	ec2List := ec2Instance.InstanceList{}
+	err = r.List(ctx, &ec2List, client.MatchingLabels{"instanceTemplate": template.Name})
+	if err != nil {
+		return status, err
+	}
+	if len(ec2List.Items) != 0 {
+		for _, instance := range ec2List.Items {
+			status.InstanceStatus[instance.Name] = "submitted"
+		}
+	}
+	// Submit new ones //
 	labels["instanceTemplate"] = template.Name
-	for i := 0; i < template.Spec.Count; i++ {
+	toSubmit := template.Spec.Count - len(status.InstanceStatus)
+	for i := 0; i < toSubmit; i++ {
 		// submit an instance creation request //
+		instanceName := fmt.Sprintf("%s-%s", template.Name, generateRandomString(10))
 		instance := &ec2Instance.Instance{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%d", template.Name, i),
+				Name:      instanceName,
 				Namespace: template.Namespace,
 				Labels:    labels,
 			},
@@ -177,7 +211,7 @@ func (r *InstanceTemplateReconciler) submitAWSInstances(ctx context.Context,
 		}); err != nil {
 			return status, err
 		}
-
+		status.InstanceStatus[instanceName] = "submitted"
 	}
 
 	// instance requests created //
@@ -209,6 +243,7 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 	status = template.Status
 	var ec2List ec2Instance.InstanceList
 	provisionedCount := 0
+	reconcileInstanceMap := make(map[string]string)
 	err = r.List(ctx, &ec2List, client.MatchingLabels{"instanceTemplate": template.Name})
 	if err != nil {
 		return status, err
@@ -216,6 +251,7 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 	// lets query all instances and update the status map
 	if len(ec2List.Items) > 0 {
 		for _, instance := range ec2List.Items {
+			reconcileInstanceMap[instance.Name] = instance.Status.Status
 			if instance.Status.Status == "provisioned" {
 				if instance.Spec.PublicIPAddress {
 					status.InstanceStatus[instance.Name] = instance.Status.PublicIP
@@ -233,6 +269,14 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 		status.Status = "Ready"
 		status.Provisioned = true
 		status.Message = ""
+	} else {
+		status.Status = "Reconcile"
+		for instance, _ := range status.InstanceStatus {
+			if _, ok := reconcileInstanceMap[instance]; !ok {
+				// Remove from map as this will help with reconcile logic //
+				delete(status.InstanceStatus, instance)
+			}
+		}
 	}
 
 	return status, nil

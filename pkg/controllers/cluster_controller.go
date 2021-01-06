@@ -419,7 +419,7 @@ func (r *ClusterReconciler) getConfig(ctx context.Context) (config *corev1.Confi
 }
 
 func generateRandomString(size int) (random string) {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	var letters = []rune("abcdefghijklmnopqrstuvwxyz")
 	b := make([]rune, size)
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
