@@ -8,6 +8,15 @@ metadata:
   creationTimestamp: null
   name: instancetemplates.k3s.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.status
+    description: provisioning status of template
+    name: Status
+    type: string
+  - JSONPath: .status.message
+    description: Error Message
+    name: Message
+    type: string
   group: k3s.io
   names:
     kind: InstanceTemplate
@@ -15,6 +24,7 @@ spec:
     plural: instancetemplates
     singular: instancetemplate
   scope: Namespaced
+  subresources: {}
   validation:
     openAPIV3Schema:
       description: InstanceTemplate is the Schema for the instancetemplates API

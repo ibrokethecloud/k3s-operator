@@ -138,14 +138,15 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		case "InstancesPoolsReady":
 			log.Info("Instance Pools Ready")
 			// identifyLeader method
-			var leader, leaderPool string
-			clusterStatus, err, leader, leaderPool = r.identifyLeader(ctx, cluster)
+			var leader, leaderPool, leaderName string
+			clusterStatus, err, leader, leaderPool, leaderName = r.identifyLeader(ctx, cluster)
 			if err != nil {
 				log.Error(err, "error during identification of a leader node")
 				clusterStatus.Message = err.Error()
 			} else {
 				annotations["leader"] = leader
 				annotations["leaderPool"] = leaderPool
+				annotations["leaderName"] = leaderName
 				cluster.SetAnnotations(annotations)
 				clusterStatus.Message = ""
 			}
@@ -170,8 +171,17 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				clusterStatus.Message = ""
 			}
 		case "Running":
-			log.Info("Cluster running")
-			return ctrl.Result{}, nil
+			clusterStatus, err = r.reconcileCluster(ctx, cluster)
+			if err != nil {
+				log.Error(err, "Error reconciling cluster state")
+				clusterStatus.Message = err.Error()
+			}
+
+			// if no change to status then just leave
+			if clusterStatus.Status == "Running" {
+				log.Info("Cluster running")
+				return ctrl.Result{}, nil
+			}
 		}
 
 		cluster.Status = clusterStatus
@@ -185,6 +195,7 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&k3sv1alpha1.Cluster{}).
+		Owns(&k3sv1alpha1.InstanceTemplate{}).
 		Complete(r)
 }
 
@@ -220,7 +231,12 @@ func (r *ClusterReconciler) createInstancePools(ctx context.Context, cluster *k3
 
 		// Update the owner reference along with creating the instancePool Object
 		if _, err = controllerutil.CreateOrUpdate(ctx, r.Client, ipool, func() error {
-			return controllerutil.SetControllerReference(cluster, ipool, r.Scheme)
+			if ipool.ObjectMeta.CreationTimestamp.IsZero() {
+				return controllerutil.SetControllerReference(cluster, ipool, r.Scheme)
+			}
+			ipool.Spec.Count = instancePool.Count
+			return nil
+
 		}); err != nil {
 			return status, err
 		}
@@ -262,29 +278,46 @@ func (r *ClusterReconciler) checkInstancePoolsReady(ctx context.Context,
 
 func (r *ClusterReconciler) identifyLeader(ctx context.Context,
 	cluster k3sv1alpha1.Cluster) (status k3sv1alpha1.ClusterStatus, err error, leader string,
-	leaderPool string) {
+	leaderPool string, leaderName string) {
 	status = cluster.Status
-	for _, instancePool := range cluster.Spec.InstancePools {
-		ipoolName := fmt.Sprintf("%s-%s", cluster.Name, instancePool.Name)
-		ip, err := r.fetchInstancePools(ctx, ipoolName, cluster.Namespace)
-		if err != nil {
-			return status, err, leader, leaderPool
+
+	if len(status.NodeStatus) == 0 {
+		status.NodeStatus = make(map[string]string)
+	}
+
+	annotations := cluster.GetAnnotations()
+	var ok bool
+	// Going to reconcile and check if leader has already been identified in prior to reconcile run
+	// if this is a reconcile run, then lets check if leader exists in NodeStatus as this should
+	// have been cleaned up during "Reconcile" phase. If leader is missing then lets elect a new one
+	if len(annotations) != 0 {
+		leaderName, ok = annotations["leaderName"]
+		if ok {
+			if _, nodePresent := status.NodeStatus[leaderName]; !nodePresent {
+				leader = ""
+			}
 		}
-		if ip.Spec.Role == "server" {
-			// Will Return IP Address of Leader //
-			instanceType := ip.Annotations["instanceType"]
-			if instanceType == "Custom" {
-				for _, leader = range ip.Status.InstanceStatus {
+
+	}
+	if len(leader) == 0 {
+		for _, instancePool := range cluster.Spec.InstancePools {
+			ipoolName := fmt.Sprintf("%s-%s", cluster.Name, instancePool.Name)
+			ip, err := r.fetchInstancePools(ctx, ipoolName, cluster.Namespace)
+			if err != nil {
+				return status, err, leader, leaderPool, leaderName
+			}
+			if ip.Spec.Role == "server" {
+				// Will Return IP Address of Leader //
+				for leaderName, leader = range ip.Status.InstanceStatus {
 
 				}
-			} else {
-				leader = ip.Status.InstanceStatus[ipoolName+"-0"]
+				leaderPool = ipoolName
 			}
-			leaderPool = ipoolName
 		}
 	}
+
 	status.Status = "ProvisionK3s"
-	return status, err, leader, leaderPool
+	return status, err, leader, leaderPool, leaderName
 }
 
 func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
@@ -313,6 +346,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 
 	leader := cluster.Annotations["leader"]
 	leaderPool := cluster.Annotations["leaderPool"]
+	leaderName := cluster.Annotations["leaderName"]
 	_, ok = cluster.Status.NodeStatus[leader]
 	if !ok {
 		// provision leader //
@@ -360,7 +394,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 	}
 
 	// Update status with Leader Pool //
-	status.NodeStatus[leader] = "ready"
+	status.NodeStatus[leaderName] = "ready"
 	leaderEndpoint := fmt.Sprintf("https://%s:6443", leader)
 	for _, clusterPools := range cluster.Spec.InstancePools {
 		poolName := fmt.Sprintf("%s-%s", cluster.Name, clusterPools.Name)
@@ -509,4 +543,65 @@ func patchKubeConfig(encodedKubeConfig []byte, leader string) (patchedCfg string
 	}
 
 	return patchedCfg, err
+}
+
+func (r *ClusterReconciler) reconcileCluster(ctx context.Context,
+	cluster k3sv1alpha1.Cluster) (status k3sv1alpha1.ClusterStatus, err error) {
+	status = cluster.Status
+	tmpStatus := make(map[string]string)
+	for _, instancePool := range cluster.Spec.InstancePools {
+		ipoolName := fmt.Sprintf("%s-%s", cluster.Name, instancePool.Name)
+		ip, err := r.fetchInstancePools(ctx, ipoolName, cluster.Namespace)
+		if err != nil {
+			return status, err
+		}
+
+		// We want to wait till instance pools are ready before we do any cluster
+		// level reconciliation //
+		if ip.Status.Status != "Ready" || !ip.Status.Provisioned {
+			return status, err
+		}
+
+		// if node count in cluster spec differents from actual instanceTemplate then
+		// sync this up
+		if instancePool.Count != ip.Spec.Count {
+			/* ip.Spec.Count = instancePool.Count
+			err = r.Update(ctx, ip)
+			if err != nil {
+				return status, err
+			} */
+			status.Status = "SshKeyGenerated"
+			return status, err
+			/*if instancePool.Count > ip.Spec.Count {
+				status.Status = "InstancesPoolsCreated"
+				return status, err
+			} else {
+				// if there are more nodes than needed.. then update instanceTemplate
+				// reconcile again as this should now allow cluster node reconcile
+				status.Status = "Ready"
+				return status, err
+			} */
+		}
+
+		for instance, address := range ip.Status.InstanceStatus {
+			tmpStatus[instance] = address
+		}
+	}
+
+	// Lets check if there any unwanted nodes in cluster status which may have been cleaned up //
+	for instance, _ := range status.NodeStatus {
+		if _, ok := tmpStatus[instance]; !ok {
+			delete(status.NodeStatus, instance)
+			// Logic to remove node from api server //
+
+			// End of clean up of nodes //
+			status.Status = "InstancesPoolsCreated"
+		}
+	}
+	return status, err
+}
+
+func removeNode(ctx context.Context, cluster k3sv1alpha1.Cluster, instance string) (err error) {
+
+	return nil
 }

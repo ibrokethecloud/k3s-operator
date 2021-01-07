@@ -24,10 +24,10 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	ec2Instance "github.com/ibrokethecloud/ec2-operator/pkg/api/v1alpha1"
-
 	"github.com/go-logr/logr"
+	ec2Instance "github.com/ibrokethecloud/ec2-operator/pkg/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -245,7 +245,7 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 	provisionedCount := 0
 	reconcileInstanceMap := make(map[string]string)
 	err = r.List(ctx, &ec2List, client.MatchingLabels{"instanceTemplate": template.Name})
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return status, err
 	}
 	// lets query all instances and update the status map
@@ -261,14 +261,32 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 				provisionedCount++
 			}
 		}
-	} else {
-		return status, fmt.Errorf("did not find any ec2 instances")
 	}
 
 	if provisionedCount == template.Spec.Count {
 		status.Status = "Ready"
 		status.Provisioned = true
 		status.Message = ""
+	} else if provisionedCount > template.Spec.Count {
+		// remove the oldest instance //
+		for i := 0; i < provisionedCount-template.Spec.Count; i++ {
+			var name string
+			for name, _ = range status.InstanceStatus {
+			}
+			instance := &ec2Instance.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: template.Namespace,
+				},
+			}
+			err = r.Delete(ctx, instance)
+			if err != nil {
+				status.Status = "Ready"
+				status.Message = ""
+				return status, err
+			}
+		}
+
 	} else {
 		status.Status = "Reconcile"
 		for instance, _ := range status.InstanceStatus {
