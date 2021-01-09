@@ -369,7 +369,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 
 		// empty server string for the first node //
 		mergedConfig, err := generateMergedConfig(cluster.Spec.Config, cluster.Annotations["token"], "",
-			leaderPoolTemplate.Spec.Labels, leaderPoolTemplate.Spec.Taints, leader, leader, "master")
+			leaderPoolTemplate.Spec.Labels, leaderPoolTemplate.Spec.Taints, leaderName, leader, "master")
 
 		err = remoteConnection.RemoteFile("/tmp/config.yaml", mergedConfig)
 		if err != nil {
@@ -416,7 +416,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 				}
 
 				mergedConfig, err := generateMergedConfig(cluster.Spec.Config, cluster.Annotations["token"], leaderEndpoint,
-					poolTemplate.Spec.Labels, poolTemplate.Spec.Taints, address, leader, poolTemplate.Spec.Role)
+					poolTemplate.Spec.Labels, poolTemplate.Spec.Taints, node, leader, poolTemplate.Spec.Role)
 				err = remoteConnection.RemoteFile("/tmp/config.yaml", mergedConfig)
 				if err != nil {
 					return status, err
@@ -519,7 +519,7 @@ func (r *ClusterReconciler) fetchKubeConfig(ctx context.Context, cluster k3sv1al
 	if err != nil {
 		return status, err
 	}
-	err = clusterMgmt.CheckAndCleanupNode(cluster)
+	err = clusterMgmt.CheckAndCleanupNode(patchedKubeCfg, status.NodeStatus)
 	if err != nil {
 		return status, err
 	}

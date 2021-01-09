@@ -7,12 +7,10 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-
-	k3sv1alpha1 "github.com/ibrokethecloud/k3s-operator/pkg/api/v1alpha1"
 )
 
-func CheckAndCleanupNode(cluster k3sv1alpha1.Cluster) (err error) {
-	kubeConfigByte, err := base64.StdEncoding.DecodeString(cluster.Status.KubeConfig)
+func CheckAndCleanupNode(b64kubeConfig string, nodeStatus map[string]string) (err error) {
+	kubeConfigByte, err := base64.StdEncoding.DecodeString(b64kubeConfig)
 	if err != nil {
 		return err
 	}
@@ -39,7 +37,7 @@ func CheckAndCleanupNode(cluster k3sv1alpha1.Cluster) (err error) {
 	}
 
 	for _, node := range nodeList.Items {
-		if _, ok := cluster.Status.NodeStatus[node.Name]; !ok {
+		if _, ok := nodeStatus[node.Name]; !ok {
 			// clean up the node from api server
 			err = clientSet.CoreV1().Nodes().Delete(node.Name, &metav1.DeleteOptions{})
 			if err != nil {
