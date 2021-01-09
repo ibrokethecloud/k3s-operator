@@ -26,15 +26,13 @@ import (
 	"gopkg.in/yaml.v2"
 	yaml2 "sigs.k8s.io/yaml"
 
+	clusterMgmt "github.com/ibrokethecloud/k3s-operator/pkg/cluster"
 	corev1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/types"
-
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -350,7 +348,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 	_, ok = cluster.Status.NodeStatus[leader]
 	if !ok {
 		// provision leader //
-		executeCommand, err := template.GenerateCommand(bootStep, extraSteps, leader, "server")
+		executeCommand, err := template.GenerateCommand(bootStep, extraSteps, leader, "server", cluster.Spec.Version, cluster.Spec.Channel)
 		if err != nil {
 			return status, err
 		}
@@ -371,7 +369,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 
 		// empty server string for the first node //
 		mergedConfig, err := generateMergedConfig(cluster.Spec.Config, cluster.Annotations["token"], "",
-			leaderPoolTemplate.Spec.Labels, leaderPoolTemplate.Spec.Taints, leader)
+			leaderPoolTemplate.Spec.Labels, leaderPoolTemplate.Spec.Taints, leader, leader, "master")
 
 		err = remoteConnection.RemoteFile("/tmp/config.yaml", mergedConfig)
 		if err != nil {
@@ -405,7 +403,8 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 		for node, address := range poolTemplate.Status.InstanceStatus {
 			_, ok := cluster.Status.NodeStatus[node]
 			if !ok {
-				executeCommand, err := template.GenerateCommand(bootStep, extraSteps, node, poolTemplate.Spec.Role)
+				executeCommand, err := template.GenerateCommand(bootStep, extraSteps, node, poolTemplate.Spec.Role,
+					cluster.Spec.Version, cluster.Spec.Channel)
 				if err != nil {
 					return status, err
 				}
@@ -417,7 +416,7 @@ func (r *ClusterReconciler) manageK3sCluster(ctx context.Context,
 				}
 
 				mergedConfig, err := generateMergedConfig(cluster.Spec.Config, cluster.Annotations["token"], leaderEndpoint,
-					poolTemplate.Spec.Labels, poolTemplate.Spec.Taints, address)
+					poolTemplate.Spec.Labels, poolTemplate.Spec.Taints, address, leader, poolTemplate.Spec.Role)
 				err = remoteConnection.RemoteFile("/tmp/config.yaml", mergedConfig)
 				if err != nil {
 					return status, err
@@ -463,7 +462,7 @@ func generateRandomString(size int) (random string) {
 }
 
 func generateMergedConfig(config string, token string, server string,
-	labels []string, taints []string, nodeName string) (mergedConfig string, err error) {
+	labels []string, taints []string, nodeName string, externalEndpoint string, role string) (mergedConfig string, err error) {
 	configStruct := make(map[string]interface{})
 	err = yaml2.Unmarshal([]byte(config), configStruct)
 	if err != nil {
@@ -474,7 +473,10 @@ func generateMergedConfig(config string, token string, server string,
 	} else {
 		configStruct["cluster-init"] = "true"
 	}
-
+	// Add TLS Sans to master nodes //
+	if role == "master" {
+		configStruct["tls-san"] = externalEndpoint
+	}
 	configStruct["token"] = token
 	configStruct["node-name"] = nodeName
 	if len(labels) != 0 {
@@ -514,6 +516,10 @@ func (r *ClusterReconciler) fetchKubeConfig(ctx context.Context, cluster k3sv1al
 	}
 
 	patchedKubeCfg, err := patchKubeConfig(output, leader)
+	if err != nil {
+		return status, err
+	}
+	err = clusterMgmt.CheckAndCleanupNode(cluster)
 	if err != nil {
 		return status, err
 	}
@@ -562,25 +568,9 @@ func (r *ClusterReconciler) reconcileCluster(ctx context.Context,
 			return status, err
 		}
 
-		// if node count in cluster spec differents from actual instanceTemplate then
-		// sync this up
 		if instancePool.Count != ip.Spec.Count {
-			/* ip.Spec.Count = instancePool.Count
-			err = r.Update(ctx, ip)
-			if err != nil {
-				return status, err
-			} */
 			status.Status = "SshKeyGenerated"
 			return status, err
-			/*if instancePool.Count > ip.Spec.Count {
-				status.Status = "InstancesPoolsCreated"
-				return status, err
-			} else {
-				// if there are more nodes than needed.. then update instanceTemplate
-				// reconcile again as this should now allow cluster node reconcile
-				status.Status = "Ready"
-				return status, err
-			} */
 		}
 
 		for instance, address := range ip.Status.InstanceStatus {
@@ -589,12 +579,10 @@ func (r *ClusterReconciler) reconcileCluster(ctx context.Context,
 	}
 
 	// Lets check if there any unwanted nodes in cluster status which may have been cleaned up //
+	// Only handles event when reconciled instance is removed //
 	for instance, _ := range status.NodeStatus {
 		if _, ok := tmpStatus[instance]; !ok {
 			delete(status.NodeStatus, instance)
-			// Logic to remove node from api server //
-
-			// End of clean up of nodes //
 			status.Status = "InstancesPoolsCreated"
 		}
 	}

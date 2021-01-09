@@ -193,25 +193,47 @@ func (r *InstanceTemplateReconciler) submitAWSInstances(ctx context.Context,
 	// Submit new ones //
 	labels["instanceTemplate"] = template.Name
 	toSubmit := template.Spec.Count - len(status.InstanceStatus)
-	for i := 0; i < toSubmit; i++ {
-		// submit an instance creation request //
-		instanceName := fmt.Sprintf("%s-%s", template.Name, generateRandomString(10))
-		instance := &ec2Instance.Instance{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      instanceName,
-				Namespace: template.Namespace,
-				Labels:    labels,
-			},
-			Spec: *template.Spec.InstanceSpec.AWSSpec,
+	if toSubmit > 0 {
+		for i := 0; i < toSubmit; i++ {
+			// submit an instance creation request //
+			instanceName := fmt.Sprintf("%s-%s", template.Name, generateRandomString(10))
+			instance := &ec2Instance.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      instanceName,
+					Namespace: template.Namespace,
+					Labels:    labels,
+				},
+				Spec: *template.Spec.InstanceSpec.AWSSpec,
+			}
+			instance.Spec.UserData = mergedCloudInit
+			// Create ec2 instance along with update ownership reference //
+			if _, err = controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
+				return controllerutil.SetControllerReference(&template, instance, r.Scheme)
+			}); err != nil {
+				return status, err
+			}
+			status.InstanceStatus[instanceName] = "submitted"
 		}
-		instance.Spec.UserData = mergedCloudInit
-		// Create ec2 instance along with update ownership reference //
-		if _, err = controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
-			return controllerutil.SetControllerReference(&template, instance, r.Scheme)
-		}); err != nil {
-			return status, err
+	} else { // Want to remove unwanted instances if this was a scale down event //
+		for i := 0; i < len(status.InstanceStatus)-template.Spec.Count; i++ {
+			var name string
+			for name, _ = range status.InstanceStatus {
+				break
+			}
+			instance := &ec2Instance.Instance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: template.Namespace,
+				},
+			}
+			// Delete the ec2Instance Object //
+			status.Message = "Going to delete instance " + name
+			delete(status.InstanceStatus, name)
+			err = r.Delete(ctx, instance)
+			if err != nil {
+				return status, err
+			}
 		}
-		status.InstanceStatus[instanceName] = "submitted"
 	}
 
 	// instance requests created //
@@ -267,26 +289,6 @@ func (r *InstanceTemplateReconciler) fetchAWSInstances(ctx context.Context,
 		status.Status = "Ready"
 		status.Provisioned = true
 		status.Message = ""
-	} else if provisionedCount > template.Spec.Count {
-		// remove the oldest instance //
-		for i := 0; i < provisionedCount-template.Spec.Count; i++ {
-			var name string
-			for name, _ = range status.InstanceStatus {
-			}
-			instance := &ec2Instance.Instance{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: template.Namespace,
-				},
-			}
-			err = r.Delete(ctx, instance)
-			if err != nil {
-				status.Status = "Ready"
-				status.Message = ""
-				return status, err
-			}
-		}
-
 	} else {
 		status.Status = "Reconcile"
 		for instance, _ := range status.InstanceStatus {
