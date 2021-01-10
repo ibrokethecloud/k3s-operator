@@ -57,7 +57,8 @@ type InstanceTemplateStatus struct {
 }
 
 // +kubebuilder:object:root=true
-
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.status",description="provisioning status of template"
+// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Error Message"
 // InstanceTemplate is the Schema for the instancetemplates API
 type InstanceTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
