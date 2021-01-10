@@ -1,4 +1,4 @@
-#K3s Operator: Operator to launch k3s clusters
+# K3s Operator: Operator to launch k3s clusters
 
 The operator can be used to launch k3s clusters including compute for those clusters.
 
@@ -93,6 +93,7 @@ spec:
           - sg-0b5537df034ae6860
         publicIPAddress: true
         instanceType: t2.medium
+        userData: additional base64 encoded userdata
   - name: agent
     count: 3
     role: agent
@@ -107,7 +108,8 @@ spec:
         securityGroupIDS:
           - sg-0b5537df034ae6860
         publicIPAddress: true
-        instanceType: t2.medium        
+        instanceType: t2.medium      
+        userData: additional base64 encoded userdata
 ```
 
 In this case the operator will launch 3 instances for the master nodes and 3 for the agent nodes.
@@ -132,4 +134,24 @@ NAME             STATUS   ROLES         AGE   VERSION
 3.26.37.77       Ready    etcd,master   35m   v1.19.5+k3s2
 3.26.8.181       Ready    <none>        31m   v1.19.5+k3s2
 54.252.166.115   Ready    <none>        29m   v1.19.5+k3s2
+```
+
+As part of the provisioning, the user / group specified in the spec will be created via cloud-init on the launched computed 
+and k3s provisioning will be performed by the same. 
+
+If any userData is specified in the instanceTemplate spec, the same will be merged with the operator generated userdata.
+
+
+### K3s version Updates
+Updating the version field on the cluster spec will trigged an in place upgrade for the cluster.
+
+```bigquery
+apiVersion: k3s.io/v1alpha1
+kind: Cluster
+metadata:
+  name: custom
+spec:
+  # Add fields here
+  channel: "stable"
+  version: "v1.19.3+k3s2" #change to v1.20.0+k3s2 to trigger upgrade
 ```
