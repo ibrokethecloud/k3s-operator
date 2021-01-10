@@ -107,6 +107,7 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			annotations["token"] = token
 			annotations["pubKey"] = base64.StdEncoding.EncodeToString(keyPair.PublicKey)
 			annotations["privateKey"] = base64.StdEncoding.EncodeToString(keyPair.PrivateKey)
+			annotations["version"] = cluster.Spec.Version
 			cluster.SetAnnotations(annotations)
 			clusterStatus.Status = "SshKeyGenerated"
 		case "SshKeyGenerated":
@@ -168,6 +169,8 @@ func (r *ClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			} else {
 				clusterStatus.Message = ""
 			}
+			// update version to bring in line with spec after upgrade //
+			cluster.Annotations["version"] = cluster.Spec.Version
 		case "Running":
 			clusterStatus, err = r.reconcileCluster(ctx, cluster)
 			if err != nil {
@@ -555,6 +558,15 @@ func (r *ClusterReconciler) reconcileCluster(ctx context.Context,
 	cluster k3sv1alpha1.Cluster) (status k3sv1alpha1.ClusterStatus, err error) {
 	status = cluster.Status
 	tmpStatus := make(map[string]string)
+
+	// k3s version changes //
+	if cluster.Spec.Version != cluster.Annotations["version"] {
+		// drop NodeStatus and re-provision k3s //
+		status.NodeStatus = make(map[string]string)
+		status.Status = "SshKeyGenerated"
+		return status, err
+	}
+
 	for _, instancePool := range cluster.Spec.InstancePools {
 		ipoolName := fmt.Sprintf("%s-%s", cluster.Name, instancePool.Name)
 		ip, err := r.fetchInstancePools(ctx, ipoolName, cluster.Namespace)
